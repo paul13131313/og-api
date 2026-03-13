@@ -3,17 +3,48 @@ import { NextRequest } from "next/server";
 
 export const runtime = "edge";
 
-// フォントをfetchで読み込み（Edge Runtime対応）
-const notoSansJPPromise = fetch(
-  new URL("../../../../public/fonts/NotoSansJP-Medium.otf", import.meta.url)
-).then((res) => res.arrayBuffer());
+// Google Fonts APIからフォントをfetch（Edge Function サイズ制限対策）
+// CSSを取得 → フォントURL抽出 → 全サブセットを結合
+async function fetchGoogleFont(
+  family: string,
+  weight: number
+): Promise<ArrayBuffer> {
+  const cssUrl = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(family)}:wght@${weight}&display=swap`;
+  const cssRes = await fetch(cssUrl, {
+    headers: {
+      // 古いUser-AgentでTTF形式を返させる（woff2はSatoriで非対応）
+      "User-Agent":
+        "Mozilla/5.0 (BB10; Touch) AppleWebKit/537.10+ (KHTML, like Gecko) Version/10.0.9.2372 Mobile Safari/537.10+",
+    },
+  });
+  const css = await cssRes.text();
 
-const jetBrainsMonoPromise = fetch(
-  new URL(
-    "../../../../public/fonts/JetBrainsMono-Regular.ttf",
-    import.meta.url
-  )
-).then((res) => res.arrayBuffer());
+  // CSSからフォントURLを全て抽出
+  const fontUrls = [
+    ...css.matchAll(
+      /url\((https:\/\/fonts\.gstatic\.com\/[^)]+)\)/g
+    ),
+  ].map((m) => m[1]);
+
+  if (fontUrls.length === 0) {
+    throw new Error(`No font URLs found for ${family}`);
+  }
+
+  // 全サブセットをダウンロード
+  const buffers = await Promise.all(
+    fontUrls.map((url) => fetch(url).then((r) => r.arrayBuffer()))
+  );
+
+  // 最大のバッファを返す（CJKサブセットが最大）
+  return buffers.reduce((max, buf) =>
+    buf.byteLength > max.byteLength ? buf : max
+  );
+}
+
+// JetBrains Mono もGoogle Fonts APIからTTF形式で取得
+async function fetchJetBrainsMono(): Promise<ArrayBuffer> {
+  return fetchGoogleFont("JetBrains Mono", 400);
+}
 
 // 日本語禁則処理: 助詞・句読点の後にゼロ幅スペースを挿入
 function processJapaneseBreaks(title: string): string {
@@ -34,8 +65,8 @@ export async function GET(request: NextRequest) {
   }
 
   const [notoSansJPData, jetBrainsMonoData] = await Promise.all([
-    notoSansJPPromise,
-    jetBrainsMonoPromise,
+    fetchGoogleFont("Noto Sans JP", 500),
+    fetchJetBrainsMono(),
   ]);
 
   const processedTitle = processJapaneseBreaks(title);
@@ -56,7 +87,6 @@ export async function GET(request: NextRequest) {
         }}
       >
         {/* 背景メッシュグラデーション */}
-        {/* Green 1: 右下寄り */}
         <div
           style={{
             position: "absolute",
@@ -69,7 +99,6 @@ export async function GET(request: NextRequest) {
               "radial-gradient(ellipse at center, rgba(29, 158, 117, 0.28) 0%, transparent 70%)",
           }}
         />
-        {/* Purple: 中央下寄り */}
         <div
           style={{
             position: "absolute",
@@ -82,7 +111,6 @@ export async function GET(request: NextRequest) {
               "radial-gradient(ellipse at center, rgba(83, 74, 183, 0.23) 0%, transparent 70%)",
           }}
         />
-        {/* Green 2: 右端寄り */}
         <div
           style={{
             position: "absolute",
@@ -125,7 +153,6 @@ export async function GET(request: NextRequest) {
             width: "100%",
           }}
         >
-          {/* 左下: カテゴリ + タイトル */}
           <div
             style={{
               display: "flex",
@@ -158,7 +185,6 @@ export async function GET(request: NextRequest) {
             </div>
           </div>
 
-          {/* 右下: バッジ */}
           <div
             style={{
               fontFamily: "JetBrains Mono",
