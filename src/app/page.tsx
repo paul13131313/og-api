@@ -220,7 +220,7 @@ export default function Home() {
             <div key={p.title} style={{ borderRadius: "8px", overflow: "hidden" }}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={`/api/og?title=${encodeURIComponent(p.title)}&category=${encodeURIComponent(p.category)}`}
+                src={`https://og-api-self.vercel.app/api/og?title=${encodeURIComponent(p.title)}&category=${encodeURIComponent(p.category)}`}
                 alt={`${p.title} OGP`}
                 style={{ width: "100%", height: "auto", display: "block" }}
               />
