@@ -1,29 +1,19 @@
 import { ImageResponse } from "@vercel/og";
 import { NextRequest } from "next/server";
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
 
-// Node.js runtime（Edge Runtimeだとローカルフォント読み込みに制約がある）
-export const runtime = "nodejs";
+export const runtime = "edge";
 
-// フォントキャッシュ
-let notoSansJPData: Buffer | null = null;
-let jetBrainsMonoData: Buffer | null = null;
+// フォントをfetchで読み込み（Edge Runtime対応）
+const notoSansJPPromise = fetch(
+  new URL("../../../../public/fonts/NotoSansJP-Medium.otf", import.meta.url)
+).then((res) => res.arrayBuffer());
 
-async function loadFonts() {
-  const fontsDir = join(process.cwd(), "public", "fonts");
-
-  if (!notoSansJPData) {
-    notoSansJPData = await readFile(join(fontsDir, "NotoSansJP-Medium.otf"));
-  }
-  if (!jetBrainsMonoData) {
-    jetBrainsMonoData = await readFile(
-      join(fontsDir, "JetBrainsMono-Regular.ttf")
-    );
-  }
-
-  return { notoSansJPData, jetBrainsMonoData };
-}
+const jetBrainsMonoPromise = fetch(
+  new URL(
+    "../../../../public/fonts/JetBrainsMono-Regular.ttf",
+    import.meta.url
+  )
+).then((res) => res.arrayBuffer());
 
 // 日本語禁則処理: 助詞・句読点の後にゼロ幅スペースを挿入
 function processJapaneseBreaks(title: string): string {
@@ -43,7 +33,10 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  const fonts = await loadFonts();
+  const [notoSansJPData, jetBrainsMonoData] = await Promise.all([
+    notoSansJPPromise,
+    jetBrainsMonoPromise,
+  ]);
 
   const processedTitle = processJapaneseBreaks(title);
 
@@ -186,13 +179,13 @@ export async function GET(request: NextRequest) {
       fonts: [
         {
           name: "Noto Sans JP",
-          data: fonts.notoSansJPData,
+          data: notoSansJPData,
           weight: 500 as const,
           style: "normal" as const,
         },
         {
           name: "JetBrains Mono",
-          data: fonts.jetBrainsMonoData,
+          data: jetBrainsMonoData,
           weight: 400 as const,
           style: "normal" as const,
         },
